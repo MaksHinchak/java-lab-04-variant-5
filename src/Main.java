@@ -1,156 +1,105 @@
-import java.io.BufferedReader; // Буферизуємо читання консолі й текстових файлів.
-import java.io.BufferedWriter; // Буферизуємо запис у вихідний файл.
-import java.io.IOException; // Обробляємо помилки доступу до файлів і потоків.
-import java.io.InputStreamReader; // Перетворюємо байтовий System.in на символьний Reader.
-import java.nio.charset.StandardCharsets; // Явно застосовуємо UTF-8 для українського тексту.
-import java.nio.file.Files; // Стандартні операції відкриття й перевірки файлів.
-import java.nio.file.Path; // Path зберігає шлях відповідно до поточної ОС.
-import java.nio.file.StandardOpenOption; // Опції визначають додавання або перезапис файлу.
-import java.util.ArrayList; // Зберігаємо всі слова, включно з повтореннями.
-import java.util.Collections; // Використовуємо стандартне сортування списку.
-import java.util.List; // Інтерфейс для параметрів і результатів зі списками.
-import java.util.Locale; // Locale.ROOT забезпечує незалежне від налаштувань приведення регістру.
-import java.util.TreeSet; // Перетин слів подаємо як відсортовану множину без дублікатів.
-// class описує тип об’єктів; new створює конкретний об’єкт і викликає його конструктор. public робить клас
-// доступним ззовні; final у заголовку класу, якщо він є, забороняє створювати підкласи, але сам по собі не робить
-// поля незмінними.
-public class Main { // Лабораторна 4: перетин словників і посимвольний запис до EOF.
-    // private забороняє прямий доступ до поля з інших класів. final дозволяє присвоїти поле лише один раз; для
-    // посилання це заборона замінити об’єкт, а не заборона змінювати його вміст, якщо сам об’єкт змінний.
-    // System.in дає байти; InputStreamReader декодує їх у символи UTF-8, а BufferedReader читає наперед у буфер і
-    // дає readLine(). Використовуємо один спільний читач: кілька буферів над System.in могли б забрати дані один в
-    // одного.
-    private static final BufferedReader CONSOLE = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)); // Один Reader не губить символи через конкуруючі буфери.
-    // throws у заголовку попереджає викликача про перевірюваний виняток: Java вимагає його перехопити або теж
-    // оголосити throws. Це не команда кинути помилку — її кидає throw усередині; у Python такої обов’язкової
-    // декларації немає.
-    // static означає, що метод належить класу: його можна викликати без створення об’єкта. public дозволяє виклик
-    // з інших класів, private обмежує використання цим класом; тип перед назвою задає результат, а void означає
-    // відсутність значення для повернення.
-    private static String ask(String prompt) throws IOException { // Допоміжний метод для читання шляхів і відповідей.
-        System.out.print(prompt); // Виводимо запрошення в консоль.
-        // readLine() повертає рядок без символів його завершення; null означає кінець потоку, а "" — справжній
-        // порожній рядок. Тому EOF перевіряємо через null, не через порожній текст; це відрізняється від Python
-        // file.readline(), де EOF — порожній рядок.
-        String line = CONSOLE.readLine(); // Читаємо весь рядок шляху, у тому числі пробіли.
-        // throw — аналог raise у Python: негайно припиняємо звичайний хід методу й передаємо об’єкт помилки
-        // найближчому відповідному catch. new створює виняток, а текст конструктора пояснює причину користувачу.
-        if (line == null) throw new IOException("Введення завершено."); // EOF під час запиту не є коректною відповіддю.
-        return line; // Повертаємо введений текст.
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.TreeSet;
+public class Main {
+    // private — поле закрите ззовні; final забороняє переприсвоєння, але не зміну вмісту об’єкта.
+    // InputStreamReader декодує байти в символи, BufferedReader додає буфер і readLine.
+    private static final BufferedReader CONSOLE = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+    // static — виклик без об’єкта; public — доступ ззовні, private — лише в класі; void — без результату.
+    // throws оголошує перевірюваний виняток: викликач мусить перехопити його або теж оголосити.
+    private static String ask(String prompt) throws IOException {
+        System.out.print(prompt);
+        // readLine повертає null при EOF; порожній рядок "" означає прочитаний порожній рядок.
+        String line = CONSOLE.readLine();
+        if (line == null) throw new IOException("Введення завершено.");
+        return line;
     }
-    public static List<String> words(Path path) throws IOException { // Читаємо файл послідовно в стандартний контейнер.
-        // ArrayList — список, що може змінювати довжину, найближчий тут до Python list. Тип у <...> обмежує
-        // допустимі елементи під час компіляції; <> після new означає «вивести цей тип із контексту». Конструктор
-        // із колекцією копіює список посилань, а не самі об’єкти.
-        List<String> result = new ArrayList<>(); // Кожне входження слова зберігається окремо.
-        // try (...) автоматично закриє вказаний ресурс після блоку, навіть при помилці чи return. Це Java-аналог
-        // with open(...) у Python; для writer закриття також виводить залишок буфера у файл.
-        // Files відкриває текстовий потік, а буфер зменшує кількість дрібних звернень до диска. UTF_8 явно задає
-        // кодування, щоб український текст однаково читався на різних машинах; помилка доступу передається як
-        // IOException.
-        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) { // try-with-resources закриє файл навіть при помилці.
-            String line; // Тимчасова змінна для поточного рядка.
-            // Присвоєння всередині дужок спочатку зчитує наступне значення, а зовнішня умова перевіряє його. Так
-            // за кожну ітерацію читаємо рівно один раз; у сучасному Python близький запис використовував би :=.
-            while ((line = reader.readLine()) != null) { // null позначає фізичний кінець файлу.
-                // Це for-each: двокрапка означає «взяти по черзі кожен елемент», як for item in items у Python.
-                // Ліворуч указано тип елемента; сам індекс тут не потрібен, а для об’єктів змінна отримує
-                // посилання, не копію.
-                // На відміну від Python str.split, Java String.split приймає регулярний вираз. У рядку Java
-                // зворотну риску треба подвоїти: "\\s+" передає шаблону правило «один або більше пробільних
-                // символів», а "\\." — буквальну крапку, не будь-який символ.
-                // Locale.ROOT задає нейтральні мовні правила для toLowerCase, щоб результат не залежав від локалі
-                // цього Mac. split тут розділяє саме за набором символів із завдання, а не за будь-якою
-                // пунктуацією.
-                for (String word : line.toLowerCase(Locale.ROOT).split("[\\s.,:;]+")) { // Відкидаємо пробіли та саме перелічені в умові розділові знаки.
-                    if (!word.isEmpty()) result.add(word); // Порожній фрагмент на початку рядка не є словом.
+    public static List<String> words(Path path) throws IOException {
+        // ArrayList<T> — змінний список елементів типу T; <> після new виводить тип із контексту.
+        List<String> result = new ArrayList<>();
+        // try (ресурс) автоматично закриває його після блоку, зокрема при помилці.
+        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            String line;
+            // Присвоєння в умові: спочатку читаємо значення, потім перевіряємо його.
+            while ((line = reader.readLine()) != null) {
+                // for (Тип елемент : колекція) — перебір елементів без індексу.
+                // String.split приймає regex: "\\s+" — пробіли, "\\." — крапка; -1 зберігає кінцеві порожні частини.
+                for (String word : line.toLowerCase(Locale.ROOT).split("[\\s.,:;]+")) {
+                    if (!word.isEmpty()) result.add(word);
                 }
             }
         }
-        // Collections.sort змінює порядок самого списку, як list.sort() у Python. Без другого аргументу
-        // викликається compareTo елементів (Comparable); з переданим Comparator використовується його compare.
-        // Рішення про порядок задає знак результату порівняння.
-        Collections.sort(result); // Природний лексикографічний порядок Java за Unicode.
-        return result; // Повертаємо відсортований список із повторами.
+        // sort без порівнювача викликає Comparable.compareTo; з порівнювачем — Comparator.compare.
+        Collections.sort(result);
+        return result;
     }
-    private static List<String> readWords(String prompt) throws IOException { // Запит повторюється, якщо вхідного файлу немає.
-        while (true) { // Користувач може виправити шлях без перезапуску.
-            String path = ask(prompt); // EOF тут передається верхньому рівню, а не запускає новий запит.
-            // Path — об’єкт шляху, приблизно pathlib.Path у Python. Path.of тільки розбирає запис шляху, а не
-            // створює файл; відносний шлях рахується від робочої папки запущеної програми.
-            try { return words(Path.of(path)); } // Відкриваємо та обробляємо введений файл.
-            // catch — аналог except у Python: ця гілка виконується лише після відповідної помилки в try. e —
-            // об’єкт винятку, getMessage() дає його пояснення; вертикальна риска між типами дозволяє одним блоком
-            // обробити кілька видів помилок.
-            catch (IOException | java.nio.file.InvalidPathException e) { System.out.println("Не вдалося прочитати: " + e.getMessage()); } // Пояснюємо помилку й повертаємось до запиту.
+    private static List<String> readWords(String prompt) throws IOException {
+        while (true) {
+            String path = ask(prompt);
+            try { return words(Path.of(path)); }
+            // catch (Тип1 | Тип2 e) — один обробник для кількох типів винятків.
+            catch (IOException | java.nio.file.InvalidPathException e) { System.out.println("Не вдалося прочитати: " + e.getMessage()); }
         }
     }
-    private static BufferedWriter output() throws IOException { // Вибираємо вихідний шлях і погоджений режим запису.
-        while (true) { // Дозволяємо виправляти шлях і відмовлятися від створення.
-            String raw = ask("Вихідний файл: "); // Шлях може бути абсолютним або відносним до проєкту.
-            try { // Перевіряємо шлях і доступність файлової системи.
-                Path path = Path.of(raw); // Створюємо платформозалежне представлення шляху.
-                boolean exists = Files.exists(path); // Визначаємо, чи потрібен запит на створення.
-                // Умова ? значення_якщо_так : значення_якщо_ні — короткий вибір одного з двох значень, аналог a if
-                // condition else b у Python. Обчислюється лише вибрана частина, тому інший конструктор чи виклик
-                // тут не виконується.
-                String mode = ask(exists ? "Файл існує: 1 - перезапис, 2 - дописати, 0 - інший шлях: " : "Створити файл? 1 - так, 0 - інший шлях: "); // Вибір явного режиму захищає від випадкового стирання.
-                // equals(...) порівнює вміст за правилом відповідного класу. Для рядків не слід писати ==, бо в
-                // Java він порівнює посилання; Python == для рядків уже порівнює текст. Для власних об’єктів
-                // правило equals визначено в їхньому класі.
-                if (!mode.equals("1") && !(exists && mode.equals("2"))) continue; // Відмова або невідома відповідь повертає до вибору шляху.
-                // APPEND пише в кінець і зберігає старі дані; TRUNCATE_EXISTING очищає вміст наявного файлу при
-                // відкритті. CREATE у наступному виклику створює відсутній файл, WRITE дозволяє запис: це близько
-                // до режимів "a" і "w" у Python.
-                StandardOpenOption option = mode.equals("2") ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING; // Додавання зберігає старий вміст, перезапис очищує його.
-                return Files.newBufferedWriter(path, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.WRITE, option); // Створюємо UTF-8 writer із вибраними опціями.
-            } catch (java.nio.file.InvalidPathException e) { System.out.println("Некоректний шлях: " + e.getMessage()); } // Виправляємо синтаксис шляху.
-            catch (IOException e) { // Не всі помилки відкриття можна передбачити через exists.
-                if (e.getMessage().equals("Введення завершено.")) throw e; // EOF не можна виправити повторним читанням.
-                System.out.println("Не вдалося відкрити вихідний файл: " + e.getMessage()); // Після помилки доступу можна вказати інший файл.
+    private static BufferedWriter output() throws IOException {
+        while (true) {
+            String raw = ask("Вихідний файл: ");
+            try {
+                Path path = Path.of(raw);
+                boolean exists = Files.exists(path);
+                // умова ? a : b — вибір значення: a, якщо true, інакше b.
+                String mode = ask(exists ? "Файл існує: 1 - перезапис, 2 - дописати, 0 - інший шлях: " : "Створити файл? 1 - так, 0 - інший шлях: ");
+                // equals порівнює вміст; == для об’єктів Java перевіряє тотожність посилань.
+                if (!mode.equals("1") && !(exists && mode.equals("2"))) continue;
+                StandardOpenOption option = mode.equals("2") ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING;
+                return Files.newBufferedWriter(path, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.WRITE, option);
+            } catch (java.nio.file.InvalidPathException e) { System.out.println("Некоректний шлях: " + e.getMessage()); }
+            catch (IOException e) {
+                if (e.getMessage().equals("Введення завершено.")) throw e;
+                System.out.println("Не вдалося відкрити вихідний файл: " + e.getMessage());
             }
         }
     }
-    public static List<String> intersection(List<String> a, List<String> b) { // Визначаємо слова, які присутні в обох файлах.
-        // TreeSet прибирає повтори та зберігає елементи впорядкованими. Для рядків порядок природний, за UTF-16, а
-        // не за правилами українського словника; для цілих — числовий. У Python для схожого результату
-        // використовують sorted(set(values)).
-        TreeSet<String> common = new TreeSet<>(a); // Копія першого списку прибирає дублікати й задає порядок.
-        // retainAll змінює множину-одержувач: залишає тільки елементи, що є в іншій колекції. Це близько до
-        // set.intersection_update у Python; попереднє створення копії захищає вхідні дані від зміни.
-        common.retainAll(new TreeSet<>(b)); // Залишаємо тільки елементи, присутні у другій множині.
-        return new ArrayList<>(common); // Повертаємо відсортований результат без повторень.
+    public static List<String> intersection(List<String> a, List<String> b) {
+        // TreeSet — множина з упорядкованим перебором.
+        TreeSet<String> common = new TreeSet<>(a);
+        common.retainAll(new TreeSet<>(b));
+        return new ArrayList<>(common);
     }
-    // public дозволяє Java знайти точку входу; static означає виклик без new Main(); void означає, що метод не
-    // повертає значення. String[] args — масив аргументів запуску без назви програми (на відміну від Python
-    // sys.argv). Тут починається виконання, приблизно як у блоці if __name__ == "__main__" у Python.
-    public static void main(String[] args) { // Запускаємо одну з двох файлових задач.
-        try { // Усі файлові винятки перетворюємо на повідомлення користувачу.
-            String task = ask("Завдання (1 - спільні слова, 2 - посимвольний запис): "); // Обираємо режим.
-            if (task.equals("1")) { // Порівняння слів із двох текстових файлів.
-                List<String> a = readWords("Перший вхідний файл: "); // Читаємо й сортуємо слова першого файлу.
-                List<String> b = readWords("Другий вхідний файл: "); // Читаємо й сортуємо слова другого файлу.
-                System.out.println("Перший список: " + a + "\nДругий список: " + b); // Друкуємо обидва списки з повтореннями за умовою.
-                try (BufferedWriter writer = output()) { // Відкриваємо результат у вибраному користувачем режимі.
-                    for (String word : intersection(a, b)) { // Записуємо кожне спільне слово один раз.
-                        writer.write(word); // Записуємо слово без автоматичного переходу рядка.
-                        // write сам не додає перенесення рядка. newLine() записує стандартний роздільник рядків
-                        // поточної ОС, щоб наступний запис починався окремо.
-                        writer.newLine(); // Кожне слово займає окремий рядок.
+    // main — точка входу; String[] args містить аргументи запуску без назви програми.
+    public static void main(String[] args) {
+        try {
+            String task = ask("Завдання (1 - спільні слова, 2 - посимвольний запис): ");
+            if (task.equals("1")) {
+                List<String> a = readWords("Перший вхідний файл: ");
+                List<String> b = readWords("Другий вхідний файл: ");
+                System.out.println("Перший список: " + a + "\nДругий список: " + b);
+                try (BufferedWriter writer = output()) {
+                    for (String word : intersection(a, b)) {
+                        writer.write(word);
+                        writer.newLine();
                     }
                 }
-                System.out.println("Спільні слова записано."); // Повідомлення після успішного закриття файлу.
-            } else if (task.equals("2")) { // Посимвольний запис із консолі за другим завданням.
-                try (BufferedWriter writer = output()) { // Файл відкриваємо до початку текстового введення.
-                    System.out.println("Вводьте текст. Завершення: EOF (macOS/IntelliJ: Ctrl+D; Windows CMD: Ctrl+Z, Enter)."); // Ctrl+Z у терміналі macOS призупиняє процес, тому тут потрібен Ctrl+D.
-                    int symbol; // int дозволяє відрізнити символьне значення від маркера -1.
-                    // read() повертає int: 0..65535 означає одну UTF-16 одиницю, а -1 — кінець потоку. char не
-                    // підходить для маркера -1. Тут передаємо одиниці без зміни порядку, тому пари для символів
-                    // поза базовою площиною зберігаються.
-                    while ((symbol = CONSOLE.read()) != -1) writer.write(symbol); // Передаємо по одному UTF-16 елементу до writer до фізичного EOF.
+                System.out.println("Спільні слова записано.");
+            } else if (task.equals("2")) {
+                try (BufferedWriter writer = output()) {
+                    System.out.println("Вводьте текст. Завершення: EOF (macOS/IntelliJ: Ctrl+D; Windows CMD: Ctrl+Z, Enter).");
+                    int symbol;
+                    // read повертає UTF-16 одиницю як int або -1 при EOF; char не вміщує маркер -1.
+                    while ((symbol = CONSOLE.read()) != -1) writer.write(symbol);
                 }
-                System.out.println("Текст записано."); // Writer закрито, буфер гарантовано виведений.
-            } else System.out.println("Оберіть завдання 1 або 2."); // Невідомий номер не запускає запис.
-        } catch (IOException e) { System.out.println("Помилка: " + e.getMessage()); } // Обробляємо відмову доступу, помилки читання й EOF у запитах.
+                System.out.println("Текст записано.");
+            } else System.out.println("Оберіть завдання 1 або 2.");
+        } catch (IOException e) { System.out.println("Помилка: " + e.getMessage()); }
     }
 }
